@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "ベイジアンネットワーク"
+version = "0.1.0"
+description = ""
+authors = ["ryogamotohashi <ryo4n66@icloud.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.2.2"
+numpy = "^1.26.4"
+scipy = "^1.13.1"
+pgmpy = "^0.1.25"
+matplotlib = "^3.9.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
