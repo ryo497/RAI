@@ -7,53 +7,132 @@ from engine.indicator.bayes_factor import bayes_factor
 from CI_testing.g_testing import g2_test
 from CI_testing.chi2 import chi2_test
 import networkx as nx
+from networkx import Graph, DiGraph
+from engine.strucure.Sub_strucures import SubStructures
 from itertools import combinations
+from collections import defaultdict
+
+
+class CI_testing():
+    def __init__(self):
+        self.result = defaultdict(set)
+        pass
+
+
+    def calc(self, X, Y, Z, data, test="bayes_factor", alpha=0.05):
+        is_dependent = conditional_independence_test(X, Y, Z, data, test=test, alpha=alpha)
+        self.save_result(self, is_dependent, X, Y)
+        return is_dependent
+
+
+    def save_result(self, is_dependent, X, Y, Z):
+        if is_dependent:
+            self.result[frozenset([X,Y])] |= set(Z)
+
+
+    def get_condition_set(self, X, Y):
+        return self.result[frozenset([X,Y])]
+
 
 def rai_algorithm(Nz, gs, gex, gall, go, data):
-    print("rai_algorithm")
-    gall = gs.copy()
-    if all(len(gall[node]) <= Nz for node in gs):
-        go.add_nodes_from(gs.nodes)
-        if len(gs.edges) != 0:
-            go.add_edges_from(gs.edges(data=True))
-        print(f"return {go}")
-        return go
+    """_summary_
+
+    Args:
+        Nz (int): CIテストの字数
+        gs (Graph): 入力無向グラフ
+        gall[node] --> dict: 入力無向グラフのノードの隣接ノード {node: {metadata}}
+        gex (set of Graph): _description_
+        gall (Graph): _description_
+        go (_type_): _description_
+        data (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    # gall = gs.copy()
+    #  display_graph_info(gs)
+    # for node in gs:
+    #     print(len(gs[node]))
+    print("A")
+    if all(len(gs[node]) <= Nz for node in gs):
+        go.add_nodes_from(gs.nodes(data=True))
+        for node in gs.nodes:
+            go.add_edges_from(gall.edges(node, data=True))
+        return go, gs
+    
+    """_summary_
+    1. For every node Y in Gstart and its parent X in Gex, if ∃S ⊂ {Pap(Y,Gstart) ∪
+    Pa(Y,Gex)\X} and |S| = n such that X ⊥⊥ Y |S, then remove the edge between
+    X and Y from Gall. とても大事なステップ
+    2. Direct the edges in Gstart using orientation rules.
+    """
+    CI_Test = CI_testing()
+    # display_graph_info(gs)
+    print("B1")
     for node_y in gs.nodes:
-        for node_x in gex:
-            print("conditional_independence_test_1")
-            if conditional_independence_test(node_x, node_y, [], data, test="bayes_factor"):
-                gall[node_y].remove(node_x)
-    apply_orientation_rules(gs, data)
+        for node_x in gex.nodes:
+            print("B1 processing")
+            Z = gall.neighbors(node_x)
+            if Z != set():
+                Z = list(Z)
+            if CI_Test.calc(node_x, node_y, Z, data, test="bayes_factor"):
+                print("$#########")
+                gall.remove_edge(node_y, node_x)
+    # gs = apply_orientation_rules(gs, data, CI_Test)
+    print("B2")
     for node_y in gs.nodes:
         neighbors = list(gs.neighbors(node_y))
         for node_x in neighbors:
-            Z = common_neighbors(gs, node_x, node_y)
-            if Z != set():
-                Z = list(Z)
-                if gs.has_edge(node_x, node_y) or gall.has_edge(node_x, node_y):
-                    print("conditional_independence_test_2")
-                    if conditional_independence_test(node_x, node_y, Z, data, test="bayes_factor"):
-                        if gall.has_edge(node_x, node_y):
-                            gall.remove_edge(node_x, node_y)
-                        if gs.has_edge(node_x, node_y):
-                            gs.remove_edge(node_x, node_y)
-    apply_orientation_rules(gs, data)
-    print("pre_group_lowest_ropological_order_nodes")
+            print("B2 processing")
+            if Nz == 0:
+                Z = []
+                if CI_Test.calc(node_x, node_y, Z, data, test="bayes_factor"):
+                    print("#########")
+                    if gall.has_edge(node_x, node_y):
+                        gall.remove_edge(node_x, node_y)
+                    if gs.has_edge(node_x, node_y):
+                        gs.remove_edge(node_x, node_y)
+            else:
+                set_Pa = gex.parents(node_y) | set(neighbors) - {node_x}
+                num_Pa = len(set_Pa)
+                if num_Pa >= Nz:
+                    for Z in combinations(set_Pa, Nz):
+                        if gs.has_edge(node_x, node_y) or gall.has_edge(node_x, node_y):
+                            if conditional_independence_test(node_x, node_y, Z, data, test="bayes_factor"):
+                                print("########")
+                                if gall.has_edge(node_x, node_y):
+                                    gall.remove_edge(node_x, node_y)
+                                if gs.has_edge(node_x, node_y):
+                                    gs.remove_edge(node_x, node_y)
     # display_graph_info(gs)
-    gc, sub_structures = group_lowest_ropological_order_nodes(gs)
-    for sub in sub_structures:
-        output = rai_algorithm(Nz + 1, sub, gex, gall, go, data)
-        go.add_nodes_from(output.nodes(data=True))
-        go.add_edges_from(output.edges(data=True))
-    gex = gex | set(sub_structures)
+    gs = apply_orientation_rules(gs, data, CI_Test)
+    gall = apply_orientation_rules(gall, data, CI_Test)
+    print("C1")
+    # display_graph_info(gs)
+    # display_graph_info(gall)
+    # display_graph_info(gs)
+    # display_graph_info(gs)
+    cls_sub_structures = SubStructures(gs, gex)
+    # gc, sub_structures =
+    gc, sub_stractures, gex = cls_sub_structures.extract_sub_structures()
+    for sub in sub_stractures:
+        print(f"substructures: {sub}")
+        output, _ = rai_algorithm(Nz + 1, sub, gex, gall, go, data)
+        print(f"substructures_rai {sub} done")
+        for node in list(output.nodes):
+            go.add_node(node)
+            go.add_edges_from(gall.edges(node, data=True))
+    # gex = gex | set(gex.sub_structures)
     # return rai_algorithm(Nz + 1, gc, gex, gall, data)
-    print("last")
-    output = rai_algorithm(Nz + 1, gc, gex, gall, go, data)
-    go.add_nodes_from(output.nodes(data=True))
-    if output.edges:
-        go.add_edges_from(output.edges(data=True))
-    print(f"return {go}")
-    return go
+    # display_graph_info(gc)
+    print("C2")
+    output, _ = rai_algorithm(Nz + 1, gc, gex, gall, nx.DiGraph(), data)
+    print("gc rai done")
+    # display_graph_info(output)
+    for node in output:
+        go.add_node(node)
+        go.add_edges_from(gall.edges(data=True))
+    return go, gs
 
 def conditional_independence_test(X, Y, Z, data, test="chi2", alpha=0.05):
     # ここに適切な条件付き独立性テストを実装
@@ -131,26 +210,31 @@ def common_neighbors(G, node_x, node_y):
     return neighbors_x & neighbors_y
 
 
-def apply_orientation_rules(gs, data, alpha=0.05):
-    for (a, b), (a, c) in combinations(gs.edges(), 2):
-        if b != c and not gs.has_edge(b, c) and nx.has_path(gs, b, c):
-            gs.add_edge(a, b)
-            gs.add_edge(a, c)
-    return gs
-    # # V-structureの検出と方向付け
-    # for node in gs.nodes:
-    #     predecessors = list(gs.predecessors(node))
-    #     for i in range(len(predecessors)):
-    #         for j in range(i + 1, len(predecessors)):
-    #             if not gs.has_edge(predecessors[i], predecessors[j]) and not gs.has_edge(predecessors[j], predecessors[i]):
-    #                 if not conditional_independence_test(data, predecessors[i], predecessors[j], [node], alpha, test="chi2"):
-    #                     gs.add_edge(predecessors[i], node)
-    #                     gs.add_edge(predecessors[j], node)
+def apply_orientation_rules(G, data, CI_Test):
+    DG = nx.DiGraph()
+    DG.add_nodes_from(G.nodes())
+    # V-structureの検出と方向付け
+    for (a, b), (a, c) in combinations(G.edges(), 2):
+        if b != c and not G.has_edge(b, c) and nx.has_path(G, b, c):
+            if a in CI_Test.result[frozenset([b,c])]:
+                DG.add_edge(a, b)
+                DG.add_edge(a, c)
+    # display_graph_info(DG)
 
-    # # 残りの無向エッジの方向付け
-    # for edge in list(gs.edges):
-    #     if not gs.has_edge(edge[1], edge[0]):
-    #         if gs.in_degree(edge[0]) == 0:
-    #             gs.add_edge(edge[1], edge[0])
-    #         elif gs.in_degree(edge[1]) == 0:
-    #             gs.add_edge(edge[0], edge[1])
+    # 残りの無向エッジの方向付け
+    undirected_edges = [(u, v) for (u, v) in nx.DiGraph(G).edges() if not DG.has_edge(u, v) and not DG.has_edge(v, u)]
+    for u, v in undirected_edges:
+        if not DG.has_edge(u, v) and not DG.has_edge(v, u):
+            if not nx.has_path(DG, v, u):
+                DG.add_edge(u, v)
+            else:
+                DG.add_edge(v, u)
+    # display_graph_info(DG)
+    return DG
+    # for edge in G.edges():
+    #     if not DG.has_edge(edge[0], edge[1]) and not DG.has_edge(edge[1], edge[0]):
+    #         if DG.in_degree(edge[0]) == 0:
+    #             DG.add_edge(edge[1], edge[0])
+    #         elif DG.in_degree(edge[1]) == 0:
+    #             DG.add_edge(edge[0], edge[1])
+    # return DG

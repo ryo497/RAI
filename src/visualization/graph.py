@@ -13,8 +13,9 @@ def display_graph_info(G):
 
     # 各ノードの隣接ノードを表示
     print("\nNeighbors of each node:")
-    for node in G.nodes():
-        print(f"{node}: {list(G.successors(node))}")
+    if nx.is_directed(G):
+        for node in G.nodes():
+            print(f"{node}: {list(G.successors(node))}")
 
     pos = nx.spring_layout(G)  # ノードの配置を計算
     nx.draw(G, pos, with_labels=True, node_size=3000, node_color='lightblue', font_size=12, font_weight='bold', arrowstyle='-|>', arrowsize=15)
